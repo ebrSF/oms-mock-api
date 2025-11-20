@@ -1,130 +1,93 @@
 const express = require("express");
 const app = express();
 
-// Enable express to parse JSON bodies for PUT requests
 app.use(express.json());
 
-// 📦 In-Memory Data Store for Mock Customer Addresses
-// In a real application, this would be a database. 
-// Since this is a mock API, we use an object to store data temporarily.
-const customerAddresses = {
-  // Example customer data:
-  "CUST1001": {
-    street: "1 Rue de Rivoli",
-    city: "Paris",
-    zipCode: "75001",
-    country: "France"
-  },
-  "CUST1002": {
-    street: "24 Quai des Bergues",
-    city: "Geneva",
-    zipCode: "1201",
-    country: "Switzerland"
-  }
-};
-
-
-// --- ORDER MOCK LOGIC (from previous example) ---
+// --- MOCK DATA CONSTANTS ---
 
 const LONGCHAMP_PRODUCTS = [
-  "Le Pliage Original Shoulder Bag", "Le Pliage Green Tote Bag",
-  "Roseau Bucket Bag", "Cavalcade Crossbody Bag",
-  "Le Pliage Energy Backpack", "Longchamp 3D Belt Bag",
-  "Pénélope Fantaisie Clutch"
+  "Le Pliage Original Shoulder Bag", 
+  "Le Pliage Green Tote Bag",
+  "Roseau Bucket Bag", 
+  "Cavalcade Crossbody Bag",
+  "Le Pliage Energy Backpack", 
+  "Longchamp 3D Belt Bag"
 ];
 
+const NAMES = ["Sophie Martin", "Jean Dupont", "Marie Claire", "Luc Dubois"];
+const CITIES = [
+  { city: "Paris", zip: "75001", country: "France", street: "12 Rue de Rivoli" },
+  { city: "Lyon", zip: "69002", country: "France", street: "5 Place Bellecour" },
+  { city: "Geneva", zip: "1201", country: "Switzerland", street: "10 Quai des Bergues" },
+  { city: "New York", zip: "10001", country: "USA", street: "5th Avenue" }
+];
+
+/**
+ * Generates a Mock Order Response matching the 'OrderApiResponse' Apex Class.
+ */
 function generateOrderDetails(orderId) {
-  const statuses = ["delivered", "pending", "shipped", "cancelled"];
-  const lines = [];
-  const numberOfLines = Math.floor(Math.random() * 4) + 1;
+  const statuses = ["Processing", "Shipped", "Delivered"];
+  const lineItems = [];
+  let orderTotal = 0;
+  
+  // 1. Generate Line Items (Matches Apex 'LineItem' class)
+  const numberOfLines = Math.floor(Math.random() * 3) + 1;
   
   for (let i = 1; i <= numberOfLines; i++) {
-    const randomProductIndex = Math.floor(Math.random() * LONGCHAMP_PRODUCTS.length);
-    const description = LONGCHAMP_PRODUCTS[randomProductIndex];
-    const basePrice = Math.floor(Math.random() * 500) + 100;
-    const amount = parseFloat((basePrice + Math.random()).toFixed(2));
+    const randomProduct = LONGCHAMP_PRODUCTS[Math.floor(Math.random() * LONGCHAMP_PRODUCTS.length)];
+    const quantity = Math.floor(Math.random() * 2) + 1;
+    const unitPrice = parseFloat((Math.random() * 400 + 100).toFixed(2)); // 100 - 500
+    const lineTotal = parseFloat((unitPrice * quantity).toFixed(2));
+    
+    orderTotal += lineTotal;
 
-    lines.push({
-      line: i,
-      description: description,
-      amount: amount,
-      status: statuses[Math.floor(Math.random() * statuses.length)],
+    lineItems.push({
+      id: `L-${i}`,                 // Matches Apex: String id
+      description: randomProduct,   // Matches Apex: String description
+      quantity: quantity,           // Matches Apex: Integer quantity
+      unitPrice: unitPrice,         // Matches Apex: Double unitPrice
+      total: lineTotal,             // Matches Apex: Double total
+      status: "Shipped"             // Matches Apex: String status
     });
   }
 
+  // 2. Select Random Address & Customer
+  const randomAddress = CITIES[Math.floor(Math.random() * CITIES.length)];
+  const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
+
+  // 3. Construct Final Object (Matches Apex 'OrderApiResponse' class)
   return {
-    orderId,
-    date: new Date().toISOString(),
-    store: "Paris Saint-Honoré",
-    customerTier: Math.random() > 0.7 ? "VIP" : "Standard",
-    lines,
+    orderId: orderId,                       // Matches Apex: String orderId
+    orderDate: new Date().toISOString(),    // Matches Apex: String orderDate
+    total: parseFloat(orderTotal.toFixed(2)), // Matches Apex: Double total
+    orderCurrency: "EUR",                   // Matches Apex: String orderCurrency
+    status: "Completed",                    // Matches Apex: String status
+    deliveryStatus: "Shipped",              // Matches Apex: String deliveryStatus
+    
+    // Matches Apex: DeliveryAddress deliveryAddress
+    deliveryAddress: {
+      street: randomAddress.street,         // Matches Apex: String street
+      city: randomAddress.city,             // Matches Apex: String city
+      postalCode: randomAddress.zip,        // Matches Apex: String postalCode (Crucial rename from zipCode)
+      country: randomAddress.country        // Matches Apex: String country
+    },
+    
+    // Matches Apex: Customer customer
+    customer: {
+      name: randomName,                     // Matches Apex: String name
+      email: `${randomName.replace(' ', '.').toLowerCase()}@example.com` // Matches Apex: String email
+    },
+    
+    lineItems: lineItems                    // Matches Apex: List<LineItem> lineItems
   };
 }
 
-// 📌 GET Order Details Endpoint
+// --- ENDPOINTS ---
+
+// 📌 GET Order Details (Updated to match Apex Logic)
 app.get("/orders/:orderId", (req, res) => {
   const orderId = req.params.orderId;
+
+  // Validate ID Format (6 digits)
   if (!/^\d{6}$/.test(orderId)) {
-    return res.status(400).json({ 
-      error: "Invalid Order ID", 
-      message: "Le numéro de commande doit comporter exactement 6 chiffres numériques (e.g., 123456)." 
-    });
-  }
-  const orderDetails = generateOrderDetails(orderId);
-  res.json(orderDetails);
-});
-
-
-// --- NEW CUSTOMER ADDRESS ENDPOINTS ---
-
-// 📌 GET Customer Delivery Address
-// Retrieves the current delivery address for a given customer ID.
-app.get("/customers/:customerId/address", (req, res) => {
-  const customerId = req.params.customerId.toUpperCase(); // Normalize ID
-
-  if (customerAddresses[customerId]) {
-    res.json({
-      customerId: customerId,
-      address: customerAddresses[customerId]
-    });
-  } else {
-    res.status(404).json({
-      error: "Customer Not Found",
-      message: `Aucune adresse trouvée pour le client ID : ${customerId}.`
-    });
-  }
-});
-
-// 📌 PUT Update Customer Delivery Address
-// Updates the delivery address for a given customer ID.
-app.put("/customers/:customerId/address", (req, res) => {
-  const customerId = req.params.customerId.toUpperCase(); // Normalize ID
-  const newAddress = req.body;
-
-  // Simple validation check for required fields
-  if (!newAddress || !newAddress.street || !newAddress.city || !newAddress.zipCode) {
-    return res.status(400).json({
-      error: "Invalid Data",
-      message: "Les champs 'street', 'city', et 'zipCode' sont requis pour la mise à jour de l'adresse."
-    });
-  }
-
-  // Update or Create the address in the mock store
-  customerAddresses[customerId] = {
-    ...customerAddresses[customerId], // Preserve existing fields if any
-    ...newAddress // Overwrite/add new fields
-  };
-
-  res.status(200).json({
-    message: `Adresse mise à jour avec succès pour le client ID : ${customerId}.`,
-    newAddress: customerAddresses[customerId]
-  });
-});
-
-
-// --- SERVER START ---
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Serveur Longchamp Mock API démarré sur le port ${PORT}`);
-});
+    // Note
