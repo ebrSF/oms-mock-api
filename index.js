@@ -30,24 +30,24 @@ function generateOrderDetails(orderId) {
   const lineItems = [];
   let orderTotal = 0;
   
-  // 1. Generate Line Items (Matches Apex 'LineItem' class)
+  // 1. Generate Line Items
   const numberOfLines = Math.floor(Math.random() * 3) + 1;
   
   for (let i = 1; i <= numberOfLines; i++) {
     const randomProduct = LONGCHAMP_PRODUCTS[Math.floor(Math.random() * LONGCHAMP_PRODUCTS.length)];
     const quantity = Math.floor(Math.random() * 2) + 1;
-    const unitPrice = parseFloat((Math.random() * 400 + 100).toFixed(2)); // 100 - 500
+    const unitPrice = parseFloat((Math.random() * 400 + 100).toFixed(2)); 
     const lineTotal = parseFloat((unitPrice * quantity).toFixed(2));
     
     orderTotal += lineTotal;
 
     lineItems.push({
-      id: `L-${i}`,                 // Matches Apex: String id
-      description: randomProduct,   // Matches Apex: String description
-      quantity: quantity,           // Matches Apex: Integer quantity
-      unitPrice: unitPrice,         // Matches Apex: Double unitPrice
-      total: lineTotal,             // Matches Apex: Double total
-      status: "Shipped"             // Matches Apex: String status
+      id: `L-${i}`,
+      description: randomProduct,
+      quantity: quantity,
+      unitPrice: unitPrice,
+      total: lineTotal,
+      status: "Shipped"
     });
   }
 
@@ -55,39 +55,49 @@ function generateOrderDetails(orderId) {
   const randomAddress = CITIES[Math.floor(Math.random() * CITIES.length)];
   const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
 
-  // 3. Construct Final Object (Matches Apex 'OrderApiResponse' class)
+  // 3. Construct Final Object
   return {
-    orderId: orderId,                       // Matches Apex: String orderId
-    orderDate: new Date().toISOString(),    // Matches Apex: String orderDate
-    total: parseFloat(orderTotal.toFixed(2)), // Matches Apex: Double total
-    orderCurrency: "EUR",                   // Matches Apex: String orderCurrency
-    status: "Completed",                    // Matches Apex: String status
-    deliveryStatus: "Shipped",              // Matches Apex: String deliveryStatus
+    orderId: orderId,
+    orderDate: new Date().toISOString(),
+    total: parseFloat(orderTotal.toFixed(2)),
+    orderCurrency: "EUR",
+    status: "Completed",
+    deliveryStatus: "Shipped",
     
-    // Matches Apex: DeliveryAddress deliveryAddress
     deliveryAddress: {
-      street: randomAddress.street,         // Matches Apex: String street
-      city: randomAddress.city,             // Matches Apex: String city
-      postalCode: randomAddress.zip,        // Matches Apex: String postalCode (Crucial rename from zipCode)
-      country: randomAddress.country        // Matches Apex: String country
+      street: randomAddress.street,
+      city: randomAddress.city,
+      postalCode: randomAddress.zip,
+      country: randomAddress.country
     },
     
-    // Matches Apex: Customer customer
     customer: {
-      name: randomName,                     // Matches Apex: String name
-      email: `${randomName.replace(' ', '.').toLowerCase()}@example.com` // Matches Apex: String email
+      name: randomName,
+      email: `${randomName.replace(' ', '.').toLowerCase()}@example.com`
     },
     
-    lineItems: lineItems                    // Matches Apex: List<LineItem> lineItems
+    lineItems: lineItems
   };
 }
 
 // --- ENDPOINTS ---
 
-// 📌 GET Order Details (Updated to match Apex Logic)
 app.get("/orders/:orderId", (req, res) => {
   const orderId = req.params.orderId;
 
-  // Validate ID Format (6 digits)
   if (!/^\d{6}$/.test(orderId)) {
-    // Note
+    return res.status(400).json({ 
+      error: "Invalid Order ID", 
+      message: "Order ID must be exactly 6 digits." 
+    });
+  }
+
+  const responseData = generateOrderDetails(orderId);
+  res.json(responseData);
+});
+
+// --- SERVER START ---
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Serveur Salesforce Mock API démarré sur le port ${PORT}`);
+});
