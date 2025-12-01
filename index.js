@@ -3,15 +3,15 @@ const app = express();
 
 app.use(express.json());
 
-// --- MOCK DATA CONSTANTS ---
+// --- 1. IN-MEMORY STORAGE ---
+// This object acts as our "Database" while the app is running.
+const ordersStore = {};
 
+// --- MOCK DATA CONSTANTS ---
 const LONGCHAMP_PRODUCTS = [
-  "Le Pliage Original Shoulder Bag", 
-  "Le Pliage Green Tote Bag",
-  "Roseau Bucket Bag", 
-  "Cavalcade Crossbody Bag",
-  "Le Pliage Energy Backpack", 
-  "Longchamp 3D Belt Bag"
+  "Le Pliage Original Shoulder Bag", "Le Pliage Green Tote Bag",
+  "Roseau Bucket Bag", "Cavalcade Crossbody Bag",
+  "Le Pliage Energy Backpack", "Longchamp 3D Belt Bag"
 ];
 
 const NAMES = ["Sophie Martin", "Jean Dupont", "Marie Claire", "Luc Dubois"];
@@ -23,14 +23,12 @@ const CITIES = [
 ];
 
 /**
- * Generates a Mock Order Response matching the 'OrderApiResponse' Apex Class.
+ * Helper: Generates fresh random data (only used if order doesn't exist yet)
  */
 function generateOrderDetails(orderId) {
-  const statuses = ["Processing", "Shipped", "Delivered"];
   const lineItems = [];
   let orderTotal = 0;
   
-  // 1. Generate Line Items
   const numberOfLines = Math.floor(Math.random() * 3) + 1;
   
   for (let i = 1; i <= numberOfLines; i++) {
@@ -38,7 +36,6 @@ function generateOrderDetails(orderId) {
     const quantity = Math.floor(Math.random() * 2) + 1;
     const unitPrice = parseFloat((Math.random() * 400 + 100).toFixed(2)); 
     const lineTotal = parseFloat((unitPrice * quantity).toFixed(2));
-    
     orderTotal += lineTotal;
 
     lineItems.push({
@@ -51,11 +48,9 @@ function generateOrderDetails(orderId) {
     });
   }
 
-  // 2. Select Random Address & Customer
   const randomAddress = CITIES[Math.floor(Math.random() * CITIES.length)];
   const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
 
-  // 3. Construct Final Object
   return {
     orderId: orderId,
     orderDate: new Date().toISOString(),
@@ -63,37 +58,69 @@ function generateOrderDetails(orderId) {
     orderCurrency: "EUR",
     status: "Completed",
     deliveryStatus: "Shipped",
-    
     deliveryAddress: {
       street: randomAddress.street,
       city: randomAddress.city,
       postalCode: randomAddress.zip,
       country: randomAddress.country
     },
-    
     customer: {
       name: randomName,
       email: `${randomName.replace(' ', '.').toLowerCase()}@example.com`
     },
-    
     lineItems: lineItems
   };
 }
 
 // --- ENDPOINTS ---
 
+// 📌 GET Order Details (With Persistence)
 app.get("/orders/:orderId", (req, res) => {
   const orderId = req.params.orderId;
 
   if (!/^\d{6}$/.test(orderId)) {
-    return res.status(400).json({ 
-      error: "Invalid Order ID", 
-      message: "Order ID must be exactly 6 digits." 
-    });
+    return res.status(400).json({ error: "Invalid Order ID", message: "Order ID must be exactly 6 digits." });
   }
 
-  const responseData = generateOrderDetails(orderId);
-  res.json(responseData);
+  // 1. Check if we already have this order in memory
+  if (ordersStore[orderId]) {
+    console.log(`Serving Order ${orderId} from memory.`);
+    return res.json(ordersStore[orderId]);
+  }
+
+  // 2. If not, generate it, SAVE IT, and return it
+  console.log(`Generating new data for Order ${orderId}.`);
+  const newOrder = generateOrderDetails(orderId);
+  ordersStore[orderId] = newOrder; // <--- PERSISTENCE HAPPENS HERE
+  
+  res.json(newOrder);
+});
+
+// 📌 PUT Update Order Address
+app.put("/orders/:orderId/address", (req, res) => {
+  const orderId = req.params.orderId;
+  const newAddressData = req.body; // Expects JSON { street, city, postalCode, country }
+
+  if (!/^\d{6}$/.test(orderId)) {
+    return res.status(400).json({ error: "Invalid Order ID" });
+  }
+
+  // 1. Ensure the order exists (Lazy Load)
+  if (!ordersStore[orderId]) {
+    ordersStore[orderId] = generateOrderDetails(orderId);
+  }
+
+  // 2. Update ONLY the address fields
+  // We use spread syntax to keep existing fields if the user only sends a partial update
+  ordersStore[orderId].deliveryAddress = {
+    ...ordersStore[orderId].deliveryAddress,
+    ...newAddressData
+  };
+
+  console.log(`Address updated for Order ${orderId}`);
+
+  // 3. Return the fully updated order object
+  res.json(ordersStore[orderId]);
 });
 
 // --- SERVER START ---
