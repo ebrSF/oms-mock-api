@@ -28,9 +28,9 @@ function generateOrderDetails(orderId) {
   const lineItems = [];
   let orderTotal = 0;
   
-  // --- NEW: Determine Delivery Status based on ID Range ---
+  // Logic: Status based on ID range
   const orderIdNum = parseInt(orderId, 10);
-  let deliveryStatus = "preparation in progress"; // Default
+  let deliveryStatus = "preparation in progress"; 
 
   if (orderIdNum <= 333333) {
     deliveryStatus = "preparation in progress";
@@ -55,7 +55,7 @@ function generateOrderDetails(orderId) {
       quantity: quantity,
       unitPrice: unitPrice,
       total: lineTotal,
-      status: deliveryStatus // Sync line status with order status for consistency
+      status: deliveryStatus 
     });
   }
 
@@ -67,12 +67,12 @@ function generateOrderDetails(orderId) {
     orderDate: new Date().toISOString(),
     total: parseFloat(orderTotal.toFixed(2)),
     orderCurrency: "EUR",
-    status: "Completed", // Payment status
-    deliveryStatus: deliveryStatus, // <--- NEW LOGIC APPLIED HERE
+    status: "Completed",
+    deliveryStatus: deliveryStatus,
     deliveryAddress: {
       street: randomAddress.street,
       city: randomAddress.city,
-      postalCode: randomAddress.zip,
+      postalCode: randomAddress.zip, // Internal storage uses postalCode for Salesforce
       country: randomAddress.country
     },
     customer: {
@@ -93,7 +93,6 @@ app.get("/orders/:orderId", (req, res) => {
     return res.status(400).json({ error: "Invalid Order ID", message: "Order ID must be exactly 6 digits." });
   }
 
-  // Check memory or generate new
   if (!ordersStore[orderId]) {
     console.log(`Generating new data for Order ${orderId}.`);
     ordersStore[orderId] = generateOrderDetails(orderId);
@@ -104,24 +103,25 @@ app.get("/orders/:orderId", (req, res) => {
   res.json(ordersStore[orderId]);
 });
 
-// 📌 PUT Update Order Address (With Business Logic)
+// 📌 PUT Update Order Address
 app.put("/orders/:orderId/address", (req, res) => {
   const orderId = req.params.orderId;
-  const newAddressData = req.body;
+
+  // 1. Destructure the specific fields requested in the prompt
+  const { street, city, zip, country } = req.body;
 
   if (!/^\d{6}$/.test(orderId)) {
     return res.status(400).json({ error: "Invalid Order ID" });
   }
 
-  // 1. Ensure order exists in memory
+  // 2. Ensure order exists in memory
   if (!ordersStore[orderId]) {
     ordersStore[orderId] = generateOrderDetails(orderId);
   }
 
   const currentOrder = ordersStore[orderId];
 
-  // 2. CHECK BUSINESS RULE: Can we update?
-  // Only allow update if status is "preparation in progress"
+  // 3. CHECK BUSINESS RULE: Status must be "preparation in progress"
   if (currentOrder.deliveryStatus !== "preparation in progress") {
     return res.status(400).json({
       error: "Update Not Allowed",
@@ -129,15 +129,21 @@ app.put("/orders/:orderId/address", (req, res) => {
     });
   }
 
-  // 3. Perform Update
+  // 4. Perform Update (Mapping 'zip' input to 'postalCode' storage)
+  // We use checks to only update fields that were actually sent in the JSON
+  const currentAddress = ordersStore[orderId].deliveryAddress;
+  
   ordersStore[orderId].deliveryAddress = {
-    ...ordersStore[orderId].deliveryAddress,
-    ...newAddressData
+    ...currentAddress,
+    street: street || currentAddress.street,
+    city: city || currentAddress.city,
+    country: country || currentAddress.country,
+    postalCode: zip || currentAddress.postalCode // <--- MAPPING HAPPENS HERE
   };
 
   console.log(`Address updated for Order ${orderId}`);
 
-  // 4. Return Specific Success Message
+  // 5. Return Specific Success Message
   res.json({
     message: "shipping address has been updated",
     order: ordersStore[orderId]
