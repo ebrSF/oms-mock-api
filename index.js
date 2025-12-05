@@ -3,6 +3,11 @@ const app = express();
 
 app.use(express.json());
 
+// --- 0. allow acces from dir public ---
+app.use(express.static('public')); 
+// --------------------------
+
+
 // --- 1. IN-MEMORY STORAGE ---
 const ordersStore = {};
 
