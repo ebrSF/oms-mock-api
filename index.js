@@ -2,11 +2,7 @@ const express = require("express");
 const app = express();
 
 app.use(express.json());
-
-// --- 0. allow acces from dir public ---
-app.use(express.static('public')); 
-// --------------------------
-
+app.use(express.static('public')); // Serves the HTML frontend
 
 // --- 1. IN-MEMORY STORAGE ---
 const ordersStore = {};
@@ -18,7 +14,14 @@ const LONGCHAMP_PRODUCTS = [
   "Le Pliage Energy Backpack", "Longchamp 3D Belt Bag"
 ];
 
-const NAMES = ["Sophie Martin", "Jean Dupont", "Marie Claire", "Luc Dubois"];
+// UPDATED: Customers are now objects linking Names to specific Emails
+const CUSTOMERS = [
+  { name: "Sophie Martin", email: "smartin@example.com" },
+  { name: "Jean Dupont", email: "jdupont@example.com" },
+  { name: "Clara Dupont", email: "alavielle@salesforce.com" },
+  { name: "Luc Dubois", email: "ldubois@example.com" }
+];
+
 const CITIES = [
   { city: "Paris", zip: "75001", country: "France", street: "12 Rue de Rivoli" },
   { city: "Lyon", zip: "69002", country: "France", street: "5 Place Bellecour" },
@@ -64,8 +67,9 @@ function generateOrderDetails(orderId) {
     });
   }
 
+  // Pick Random Address & Customer (using the new object structure)
   const randomAddress = CITIES[Math.floor(Math.random() * CITIES.length)];
-  const randomName = NAMES[Math.floor(Math.random() * NAMES.length)];
+  const randomCustomer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
 
   return {
     orderId: orderId,
@@ -77,12 +81,12 @@ function generateOrderDetails(orderId) {
     deliveryAddress: {
       street: randomAddress.street,
       city: randomAddress.city,
-      postalCode: randomAddress.zip, // Internal storage uses postalCode for Salesforce
+      postalCode: randomAddress.zip, 
       country: randomAddress.country
     },
     customer: {
-      name: randomName,
-      email: `${randomName.replace(' ', '.').toLowerCase()}@example.com`
+      name: randomCustomer.name,   // Taken from constants
+      email: randomCustomer.email  // Taken from constants
     },
     lineItems: lineItems
   };
@@ -111,22 +115,19 @@ app.get("/orders/:orderId", (req, res) => {
 // 📌 PUT Update Order Address
 app.put("/orders/:orderId/address", (req, res) => {
   const orderId = req.params.orderId;
-
-  // 1. Destructure the specific fields requested in the prompt
   const { street, city, zip, country } = req.body;
 
   if (!/^\d{6}$/.test(orderId)) {
     return res.status(400).json({ error: "Invalid Order ID" });
   }
 
-  // 2. Ensure order exists in memory
   if (!ordersStore[orderId]) {
     ordersStore[orderId] = generateOrderDetails(orderId);
   }
 
   const currentOrder = ordersStore[orderId];
 
-  // 3. CHECK BUSINESS RULE: Status must be "preparation in progress"
+  // Business Rule Check
   if (currentOrder.deliveryStatus !== "preparation in progress") {
     return res.status(400).json({
       error: "Update Not Allowed",
@@ -134,21 +135,18 @@ app.put("/orders/:orderId/address", (req, res) => {
     });
   }
 
-  // 4. Perform Update (Mapping 'zip' input to 'postalCode' storage)
-  // We use checks to only update fields that were actually sent in the JSON
+  // Update logic
   const currentAddress = ordersStore[orderId].deliveryAddress;
-  
   ordersStore[orderId].deliveryAddress = {
     ...currentAddress,
     street: street || currentAddress.street,
     city: city || currentAddress.city,
     country: country || currentAddress.country,
-    postalCode: zip || currentAddress.postalCode // <--- MAPPING HAPPENS HERE
+    postalCode: zip || currentAddress.postalCode 
   };
 
   console.log(`Address updated for Order ${orderId}`);
 
-  // 5. Return Specific Success Message
   res.json({
     message: "shipping address has been updated",
     order: ordersStore[orderId]
